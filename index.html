@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for better appearance */
+        body {
+            font-family: 'Inter', sans-serif; /* Use Inter font */
+        }
+        /* Add a subtle animation for the loading spinner */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            border-top-color: #3498db; /* Customize spinner color */
+            animation: spin 1s linear infinite;
+        }
+        /* Ensure images don't exceed their container */
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block; /* Remove extra space below image */
+        }
+        /* Style for the message box */
+        .message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            display: none; /* Hidden by default */
+            font-size: 0.9rem;
+        }
+        .message-box.success {
+            background-color: #e0f2fe; /* Light blue */
+            color: #0c4a6e; /* Dark blue */
+        }
+        .message-box.error {
+            background-color: #fee2e2; /* Light red */
+            color: #991b1b; /* Dark red */
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-2xl">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">AI Image Generator</h1>
+        <p class="text-center text-gray-500 mb-8 text-sm">
+            Enter a prompt to generate an image using a demonstration AI.
+            <br>
+            <strong class="text-red-500">Note:</strong> This uses a free, public API for demo purposes. Availability and quality may vary. Real applications often require dedicated APIs and backend infrastructure.
+        </p>
+
+        <div class="mb-6">
+            <label for="prompt" class="block text-sm font-medium text-gray-700 mb-2">Enter your prompt:</label>
+            <textarea id="prompt" name="prompt" rows="3" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out" placeholder="e.g., A cute cat wearing sunglasses on a beach"></textarea>
+        </div>
+
+        <div class="text-center mb-8">
+            <button id="generateBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-150 ease-in-out inline-flex items-center justify-center">
+                <span id="btnText">Generate Image</span>
+                <div id="spinner" class="spinner w-5 h-5 border-4 border-t-4 border-gray-200 rounded-full ml-3 hidden"></div>
+            </button>
+        </div>
+
+        <div id="imageResult" class="mt-6 bg-gray-100 p-4 rounded-lg min-h-[200px] flex items-center justify-center border border-gray-200 shadow-inner">
+            <p id="placeholderText" class="text-gray-500">Your generated image will appear here...</p>
+            <img id="generatedImage" src="" alt="Generated AI Image" class="rounded-lg hidden" onerror="handleImageError()">
+        </div>
+
+        <div id="messageBox" class="message-box"></div>
+    </div>
+
+    <script>
+        // Get DOM elements
+        const promptInput = document.getElementById('prompt');
+        const generateBtn = document.getElementById('generateBtn');
+        const btnText = document.getElementById('btnText');
+        const spinner = document.getElementById('spinner');
+        const imageResultDiv = document.getElementById('imageResult');
+        const generatedImage = document.getElementById('generatedImage');
+        const placeholderText = document.getElementById('placeholderText');
+        const messageBox = document.getElementById('messageBox');
+
+        // --- Message Display Function ---
+        function showMessage(message, type = 'success') {
+            messageBox.textContent = message;
+            messageBox.className = `message-box ${type}`; // Reset classes and add type
+            messageBox.style.display = 'block';
+
+            // Hide the message after 3 seconds
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 3000);
+        }
+
+        // --- Image Error Handler ---
+        function handleImageError() {
+            console.error("Error loading image or image source is invalid.");
+            generatedImage.classList.add('hidden'); // Hide broken image element
+            placeholderText.textContent = 'Failed to load image. The API might be down or the prompt was invalid.';
+            placeholderText.classList.remove('hidden');
+            placeholderText.classList.add('text-red-500'); // Make error text red
+            setLoadingState(false); // Ensure loading state is turned off
+            showMessage('Error loading the generated image.', 'error');
+             // Fallback placeholder if the generated image fails to load
+            generatedImage.src = `https://placehold.co/512x512/eee/ccc?text=Error+Loading`;
+            generatedImage.classList.remove('hidden');
+
+        }
+
+        // --- Set Loading State ---
+        function setLoadingState(isLoading) {
+            if (isLoading) {
+                generateBtn.disabled = true; // Disable button
+                btnText.textContent = 'Generating...'; // Change button text
+                spinner.classList.remove('hidden'); // Show spinner
+                placeholderText.textContent = 'Generating image, please wait...'; // Update placeholder
+                placeholderText.classList.remove('hidden', 'text-red-500');
+                generatedImage.classList.add('hidden'); // Hide previous image
+            } else {
+                generateBtn.disabled = false; // Enable button
+                btnText.textContent = 'Generate Image'; // Restore button text
+                spinner.classList.add('hidden'); // Hide spinner
+            }
+        }
+
+        // --- Generate Image Function ---
+        async function generateImage() {
+            const prompt = promptInput.value.trim();
+
+            if (!prompt) {
+                showMessage('Please enter a prompt.', 'error');
+                return;
+            }
+
+            setLoadingState(true); // Start loading state
+            placeholderText.classList.add('hidden'); // Hide placeholder initially
+
+            // --- API Call ---
+            // Using Pollinations AI for demonstration.
+            // IMPORTANT: This is a public endpoint. Reliability/availability not guaranteed.
+            // Real apps need proper API keys and often a backend.
+            // The prompt needs to be URL-encoded.
+            const encodedPrompt = encodeURIComponent(prompt);
+            const apiUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}`;
+
+            console.log(`Fetching image from: ${apiUrl}`); // Log API URL for debugging
+
+            try {
+                // We directly set the image src. If the API returns a valid image, it will load.
+                // If it returns an error (like a 404 or non-image content), the `onerror` handler will catch it.
+                generatedImage.src = apiUrl;
+
+                // Wait for the image to load or error out
+                generatedImage.onload = () => {
+                    console.log("Image loaded successfully.");
+                    generatedImage.classList.remove('hidden'); // Show the image element
+                    placeholderText.classList.add('hidden'); // Ensure placeholder is hidden
+                    setLoadingState(false); // Stop loading state
+                    showMessage('Image generated successfully!', 'success');
+                };
+
+                // The onerror attribute on the img tag handles load failures.
+
+            } catch (error) {
+                // Catch network errors (e.g., CORS, DNS issues) if the fetch itself fails
+                // Note: fetch() won't throw for HTTP errors like 404/500 directly for image src.
+                // Those are handled by onerror. This catch is for more fundamental network issues.
+                console.error('Network error during image fetch setup:', error);
+                handleImageError(); // Use the error handler
+                showMessage('Network error. Could not initiate image request.', 'error');
+                setLoadingState(false);
+            }
+        }
+
+        // --- Event Listener ---
+        generateBtn.addEventListener('click', generateImage);
+
+        // Allow pressing Enter in the textarea to trigger generation (optional)
+        promptInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter' && !event.shiftKey) { // Check if Enter is pressed without Shift
+                event.preventDefault(); // Prevent adding a new line
+                generateImage(); // Trigger image generation
+            }
+        });
+
+    </script>
+
+</body>
+</html>
